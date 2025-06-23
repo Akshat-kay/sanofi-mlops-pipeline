@@ -13,7 +13,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v2
       - run: |
           cd infra
-          terraform init
+          terraform init -backend-config="bucket=sanofi-tfstate-prod"
           terraform validate
           terraform apply -auto-approve
         env:
@@ -29,9 +29,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: |
-          pip install metaflow scikit-learn boto3
-          python pipelines/train_flow.py run
-          aws s3 cp models/model.pkl s3://sanofi-models/model_$(date +%Y%m%d).pkl
+          pip install --upgrade pip
+          pip install metaflow scikit-learn boto3 prometheus-fastapi-instrumentator
+          export METAFLOW_USER=github-actions
+          python pipelines/train_flow.py run --no-pylint
+          aws s3 cp models/model.pkl s3://sanofi-models/model_$(date +%Y%m%d_%H%M%S).pkl
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -42,6 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       EC2_IP: ${{ secrets.EC2_IP }}
+      MODEL_VERSION: $(date +%Y%m%d_%H%M%S)
     steps:
       - uses: actions/checkout@v3
       - uses: webfactory/ssh-agent@v0.7.0
@@ -51,6 +54,7 @@ jobs:
           ssh -o StrictHostKeyChecking=no ubuntu@$EC2_IP "
             cd ~/sanofi-mlops-pipeline
             git pull
+            aws s3 cp s3://sanofi-models/model_$MODEL_VERSION.pkl ./models/model.pkl
             docker-compose down
             docker-compose up -d --build
           "
@@ -60,6 +64,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          echo "Monitoring Dashboard: http://${{ secrets.EC2_IP }}:3000"
-          echo "Prometheus: http://${{ secrets.EC2_IP }}:9090"
-          echo "API Docs: http://${{ secrets.EC2_IP }}:8000/docs"
+          echo "### Monitoring Endpoints ###"
+          echo "- Grafana: http://${{ secrets.EC2_IP }}:3000"
+          echo "- Prometheus: http://${{ secrets.EC2_IP }}:9090"
+          echo "- API Docs: http://${{ secrets.EC2_IP }}:8000/docs"
+          echo "- Health Check: http://${{ secrets.EC2_IP }}:8000/health"

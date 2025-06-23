@@ -1,0 +1,5 @@
+{
+  "METAFLOW_USER": "github-actions",
+  "METAFLOW_DATASTORE_SYSROOT_S3": "s3://sanofi-metaflow",
+  "METAFLOW_DATATOOLS_SYSROOT_S3": "s3://sanofi-metaflow-data"
+}
