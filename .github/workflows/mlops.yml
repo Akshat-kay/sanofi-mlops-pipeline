@@ -16,6 +16,10 @@ jobs:
           terraform init
           terraform validate
           terraform apply -auto-approve
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
 
   train:
     needs: infra
@@ -25,16 +29,19 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: |
-          pip install metaflow scikit-learn
+          pip install metaflow scikit-learn boto3
           python pipelines/train_flow.py run
           aws s3 cp models/model.pkl s3://sanofi-models/model_$(date +%Y%m%d).pkl
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
 
   deploy:
     needs: train
     runs-on: ubuntu-latest
     env:
       EC2_IP: ${{ secrets.EC2_IP }}
-      SSH_KEY: ${{ secrets.SSH_KEY }}
     steps:
       - uses: actions/checkout@v3
       - uses: webfactory/ssh-agent@v0.7.0
@@ -42,8 +49,9 @@ jobs:
           ssh-private-key: ${{ secrets.SSH_KEY }}
       - run: |
           ssh -o StrictHostKeyChecking=no ubuntu@$EC2_IP "
-            cd ~/sanofi-mlops-pipeline &&
-            git pull &&
+            cd ~/sanofi-mlops-pipeline
+            git pull
+            docker-compose down
             docker-compose up -d --build
           "
 
@@ -52,4 +60,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          echo "Monitoring deployed at http://${{ secrets.EC2_IP }}:3000"
+          echo "Monitoring Dashboard: http://${{ secrets.EC2_IP }}:3000"
+          echo "Prometheus: http://${{ secrets.EC2_IP }}:9090"
+          echo "API Docs: http://${{ secrets.EC2_IP }}:8000/docs"
