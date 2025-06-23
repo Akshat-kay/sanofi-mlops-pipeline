@@ -67,3 +67,6 @@ data/processed/
 # Monitoring
 monitoring/prometheus-2.47.0.linux-amd64/  # Add this to ignore Prometheus binaries
 monitoring/prometheus-*
+monitoring/prometheus-*
+*.bin
+*.exe
