@@ -1,73 +1,102 @@
+---
 name: MLOps Pipeline
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   pull_request:
-    branches: [ main ]
-
+    branches:
+      - main
+env:
+  AWS_DEFAULT_REGION: us-east-1
+  TF_WORKSPACE: prod
+  MODEL_BUCKET: sanofi-models
 jobs:
   infra:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: hashicorp/setup-terraform@v2
-      - name: Terraform Apply
+        with:
+          terraform_version: 1.5.0
+      - name: Terraform Format
+        run: cd infra && terraform fmt -check
+      - name: Terraform Init
+        run: cd infra && terraform init -backend-config="key=terraform.tfstate"
+      - name: Terraform Validate
+        run: cd infra && terraform validate
+      - name: Terraform Plan
         run: |
           cd infra
-          terraform init
-          terraform validate
-          terraform apply -auto-approve \
+          terraform plan \
             -var="aws_access_key=${{ secrets.AWS_ACCESS_KEY_ID }}" \
             -var="aws_secret_key=${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
-            -var="env=prod"
+            -var="env=prod" \
+            -out=tfplan
+        continue-on-error: false
+      - name: Terraform Apply
+        run: cd infra && terraform apply -auto-approve tfplan
         env:
-          AWS_DEFAULT_REGION: us-east-1
-
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   train:
     needs: infra
     runs-on: ubuntu-latest
     container:
-      image: python:3.9
+      image: python:3.9-slim
     steps:
       - uses: actions/checkout@v3
-      - run: |
+      - name: Set up Python dependencies
+        run: |
           pip install --upgrade pip
-          pip install metaflow scikit-learn boto3 prometheus-fastapi-instrumentator
+          pip install -r requirements.txt  # Consider using a requirements file
+      - name: Run training pipeline
+        run: |
           export METAFLOW_USER=github-actions
           python pipelines/train_flow.py run --no-pylint
-          aws s3 cp models/model.pkl s3://sanofi-models/model_$(date +%Y%m%d_%H%M%S).pkl
+      - name: Upload model to S3
+        run: |
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          aws s3 cp models/model.pkl s3://$MODEL_BUCKET/model_$TIMESTAMP.pkl
+          echo "MODEL_VERSION=$TIMESTAMP" >> $GITHUB_ENV
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: us-east-1
-
   deploy:
     needs: train
     runs-on: ubuntu-latest
-    env:
-      EC2_IP: ${{ secrets.EC2_IP }}
-      MODEL_VERSION: $(date +%Y%m%d_%H%M%S)
     steps:
       - uses: actions/checkout@v3
       - uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.SSH_KEY }}
-      - run: |
-          ssh -o StrictHostKeyChecking=no ubuntu@$EC2_IP "
+      - name: Deploy to EC2
+        run: >
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_IP }} << 'EOF'
             cd ~/sanofi-mlops-pipeline
-            git pull
-            aws s3 cp s3://sanofi-models/model_$MODEL_VERSION.pkl ./models/model.pkl
+            git pull origin main
+            aws s3 cp s3://$MODEL_BUCKET/model_$MODEL_VERSION.pkl ./models/model.pkl
             docker-compose down
+            docker image prune -af  # Clean up unused images
             docker-compose up -d --build
-          "
-
+          EOF
+        env:
+          MODEL_VERSION: ${{ env.MODEL_VERSION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   monitor:
     needs: deploy
     runs-on: ubuntu-latest
     steps:
-      - run: |
-          echo "### Monitoring Endpoints ###"
-          echo "- Grafana: http://${{ secrets.EC2_IP }}:3000"
-          echo "- Prometheus: http://${{ secrets.EC2_IP }}:9090"
-          echo "- API Docs: http://${{ secrets.EC2_IP }}:8000/docs"
-          echo "- Health Check: http://${{ secrets.EC2_IP }}:8000/health"
+      - name: Print endpoints
+        run: >
+          echo "### Monitoring Endpoints ###" >> $GITHUB_STEP_SUMMARY
+
+          echo "- Grafana: http://${{ secrets.EC2_IP }}:3000" >> $GITHUB_STEP_SUMMARY
+
+          echo "- Prometheus: http://${{ secrets.EC2_IP }}:9090" >> $GITHUB_STEP_SUMMARY
+
+          echo "- API Docs: http://${{ secrets.EC2_IP }}:8000/docs" >> $GITHUB_STEP_SUMMARY
+
+          echo "- Health Check: http://${{ secrets.EC2_IP }}:8000/health" >> $GITHUB_STEP_SUMMARY
+
