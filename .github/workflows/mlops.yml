@@ -1,0 +1,55 @@
+name: MLOps Pipeline
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: hashicorp/setup-terraform@v2
+      - run: |
+          cd infra
+          terraform init
+          terraform validate
+          terraform apply -auto-approve
+
+  train:
+    needs: infra
+    runs-on: ubuntu-latest
+    container:
+      image: python:3.9
+    steps:
+      - uses: actions/checkout@v3
+      - run: |
+          pip install metaflow scikit-learn
+          python pipelines/train_flow.py run
+          aws s3 cp models/model.pkl s3://sanofi-models/model_$(date +%Y%m%d).pkl
+
+  deploy:
+    needs: train
+    runs-on: ubuntu-latest
+    env:
+      EC2_IP: ${{ secrets.EC2_IP }}
+      SSH_KEY: ${{ secrets.SSH_KEY }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY }}
+      - run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@$EC2_IP "
+            cd ~/sanofi-mlops-pipeline &&
+            git pull &&
+            docker-compose up -d --build
+          "
+
+  monitor:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "Monitoring deployed at http://${{ secrets.EC2_IP }}:3000"

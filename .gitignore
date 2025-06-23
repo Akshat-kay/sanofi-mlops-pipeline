@@ -205,3 +205,99 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# General
+.DS_Store
+*.swp
+*.bak
+*.log
+*.tmp
+*.pid
+*~
+.idea/
+.vscode/
+.env
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfplan
+.terraform.lock.hcl
+terraform.tfstate.backup
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.ipynb_checkpoints/
+
+# Jupyter Notebooks
+*.ipynb
+
+# Docker
+docker-compose.override.yml
+**/.dockerignore
+
+# Model files
+models/*.pkl
+!models/versioned/
+!models/.gitkeep
+
+# Data files
+data/raw/
+data/processed/
+*.csv
+*.parquet
+*.feather
+
+# Metaflow
+metaflow/
+.metaflow/
+
+# AWS
+*.aws
+*.s3
+
+# IDE specific
+*.iml
+*.project
+*.pydevproject
+*.settings/
+
+# Logs
+logs/
+*.log
+
+# macOS
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Visual Studio Code
+.history/
+*.code-workspace
+
+# ML-specific
+checkpoints/
+*.h5
+*.onnx
+*.prototxt
+
+# Secrets
+secrets.ini
+credentials.json
+*.key
+*.pem
+*.cert

@@ -1,12 +1,12 @@
 from metaflow import FlowSpec, step, Parameter
 
 class DrugDiscoveryFlow(FlowSpec):
-    data_path = Parameter('data_path', default='s3://sanofi-ml-data-raw/')
+    data_path = Parameter('data_path', default='data/raw/dataset.csv')
 
     @step
     def start(self):
         import pandas as pd
-        self.df = pd.read_csv(self.data_path)  # From S3/Snowflake
+        self.df = pd.read_csv(self.data_path)
         self.next(self.train)
 
     @step
@@ -19,7 +19,7 @@ class DrugDiscoveryFlow(FlowSpec):
 
     @step
     def end(self):
-        print("Training complete!")
+        print("Model trained successfully!")
 
 if __name__ == '__main__':
     DrugDiscoveryFlow()

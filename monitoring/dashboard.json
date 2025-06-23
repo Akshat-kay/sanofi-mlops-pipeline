@@ -1,0 +1,22 @@
+{
+  "panels": [
+    {
+      "title": "Prediction Throughput",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [{
+        "expr": "rate(api_requests_total[5m])",
+        "legendFormat": "Requests/sec"
+      }]
+    },
+    {
+      "title": "Feature Distribution",
+      "type": "heatmap",
+      "datasource": "Prometheus",
+      "targets": [{
+        "expr": "api_feature_values",
+        "legendFormat": "Feature {{feature}}"
+      }]
+    }
+  ]
+}
